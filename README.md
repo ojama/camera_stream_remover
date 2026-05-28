@@ -1,0 +1,2 @@
+# camera_stream_remover
+实现实时移除画面中的选择的人物
