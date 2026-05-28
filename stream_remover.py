@@ -141,8 +141,8 @@ class StreamRemoverApp:
     DEFAULT_FRAME_HEIGHT = 480
     MORPHOLOGY_KERNEL_SIZE = (3, 3)
     INPAINT_RADIUS = 3
-    MASK_OVERLAY_ALPHA_DETECTED = 0.15   # dim overlay for every detected instance
-    MASK_OVERLAY_ALPHA_ERASING = 0.45    # bright overlay for erasing targets
+    MASK_OVERLAY_ALPHA_DETECTED = 0.15  # dim overlay for every detected instance
+    MASK_OVERLAY_ALPHA_ERASING = 0.45  # bright overlay for erasing targets
 
     def __init__(
         self,

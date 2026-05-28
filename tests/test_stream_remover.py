@@ -1,4 +1,5 @@
 import unittest
+from typing import Set
 
 import numpy as np
 
@@ -76,7 +77,7 @@ class PointHitsInstanceTests(unittest.TestCase):
         mask = np.ones((5, 5), dtype=bool)
         inst = TrackedInstance(track_id=42, bbox=(0.0, 0.0, 5.0, 5.0), mask=mask)
         instances = [inst]
-        erasing: set = set()
+        erasing: Set[int] = set()
 
         # First click: add to erase set
         for i in instances:
