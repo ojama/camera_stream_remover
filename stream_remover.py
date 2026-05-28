@@ -48,6 +48,20 @@ def match_selected_targets_to_ids(
     return matched
 
 
+def point_hits_instance(x: int, y: int, instance: TrackedInstance) -> bool:
+    """Return True if pixel (x, y) falls inside the instance's segmentation mask.
+
+    Falls back to the bounding box when the mask does not cover that pixel
+    (e.g. after resizing artefacts or when the mask array is unexpectedly shaped).
+    """
+    mask = instance.mask
+    if 0 <= y < mask.shape[0] and 0 <= x < mask.shape[1]:
+        return bool(mask[y, x])
+    # Fallback: bounding-box containment
+    x1, y1, x2, y2 = instance.bbox
+    return x1 <= x <= x2 and y1 <= y <= y2
+
+
 def apply_background_replacement(
     frame: np.ndarray,
     background: np.ndarray,
@@ -127,6 +141,8 @@ class StreamRemoverApp:
     DEFAULT_FRAME_HEIGHT = 480
     MORPHOLOGY_KERNEL_SIZE = (3, 3)
     INPAINT_RADIUS = 3
+    MASK_OVERLAY_ALPHA_DETECTED = 0.15   # dim overlay for every detected instance
+    MASK_OVERLAY_ALPHA_ERASING = 0.45    # bright overlay for erasing targets
 
     def __init__(
         self,
@@ -147,27 +163,52 @@ class StreamRemoverApp:
         self.current_frame: Optional[np.ndarray] = None
         self.paused_snapshot: Optional[np.ndarray] = None
         self.background_float: Optional[np.ndarray] = None
-        self.pending_selected_boxes: List[Tuple[int, int, int, int]] = []
         self.erasing_target_ids: Set[int] = set()
         self.last_tracked_instances: List[TrackedInstance] = []
-
-    def _match_selected_targets_to_ids(
-        self, tracked_instances: Iterable[TrackedInstance]
-    ) -> None:
-        if not self.pending_selected_boxes:
-            return
-        matched = match_selected_targets_to_ids(
-            self.pending_selected_boxes, tracked_instances, min_iou=0.01
-        )
-        self.erasing_target_ids.update(matched)
-        if matched:
-            self.pending_selected_boxes.clear()
 
     def _update_background(self, frame: np.ndarray) -> None:
         if self.background_float is None:
             self.background_float = frame.astype(np.float32)
             return
         cv2.accumulateWeighted(frame.astype(np.float32), self.background_float, self.alpha)
+
+    def _should_update_background(self) -> bool:
+        return self.learning_enabled and not self.erasing_target_ids
+
+    def _overlay_tracked_masks(
+        self, frame: np.ndarray, tracked: List[TrackedInstance]
+    ) -> np.ndarray:
+        """Overlay semi-transparent green masks on detected instances.
+
+        All detected instances get a dim green hint so the user knows they are
+        clickable.  Instances already selected for erasure get a brighter green
+        to confirm they are being erased.
+        """
+        out = frame.copy()
+        green = np.array([0, 255, 0], dtype=np.float32)
+        for inst in tracked:
+            alpha = (
+                self.MASK_OVERLAY_ALPHA_ERASING
+                if inst.track_id in self.erasing_target_ids
+                else self.MASK_OVERLAY_ALPHA_DETECTED
+            )
+            m = inst.mask.astype(bool)
+            out[m] = np.clip(
+                out[m].astype(np.float32) * (1.0 - alpha) + green * alpha, 0, 255
+            ).astype(np.uint8)
+        return out
+
+    def _on_mouse(self, event: int, x: int, y: int, _flags: int, _param: object) -> None:
+        """Mouse callback: left-click toggles a target into / out of the erase set."""
+        if event != cv2.EVENT_LBUTTONDOWN:
+            return
+        for inst in self.last_tracked_instances:
+            if point_hits_instance(x, y, inst):
+                if inst.track_id in self.erasing_target_ids:
+                    self.erasing_target_ids.discard(inst.track_id)
+                else:
+                    self.erasing_target_ids.add(inst.track_id)
+                return
 
     def _draw_hud(self, frame: np.ndarray) -> np.ndarray:
         out = frame.copy()
@@ -195,7 +236,7 @@ class StreamRemoverApp:
         )
         cv2.putText(
             out,
-            "Space: Pause/Resume  S: Select  C: Clear  L: Learn Toggle  Q/Esc: Quit",
+            "Click: Select/Deselect  Space: Pause/Resume  C: Clear  L: Learn Toggle  Q/Esc: Quit",
             (
                 self.HUD_X_MARGIN,
                 max(self.MIN_HUD_Y_POSITION, out.shape[0] - self.HUD_Y_OFFSET),
@@ -213,25 +254,11 @@ class StreamRemoverApp:
             self.current_frame.copy() if self.current_frame is not None else None
         )
 
-    def _should_update_background(self) -> bool:
-        return (
-            self.learning_enabled
-            and not self.erasing_target_ids
-            and not self.pending_selected_boxes
-        )
-
-    def _select_rois(self) -> None:
-        if self.paused_snapshot is None:
-            return
-        rois = cv2.selectROIs(self.window_name, self.paused_snapshot, False, False)
-        for x, y, w, h in rois:
-            if w > 0 and h > 0:
-                self.pending_selected_boxes.append((x, y, x + w, y + h))
-
     def run(self) -> None:
         if not self.cap.isOpened():
             raise RuntimeError("Cannot open camera source.")
         cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
+        cv2.setMouseCallback(self.window_name, self._on_mouse)
         while True:
             if not self.paused:
                 ok, frame = self.cap.read()
@@ -240,7 +267,6 @@ class StreamRemoverApp:
                 self.current_frame = frame
                 tracked = self.tracker.infer(frame)
                 self.last_tracked_instances = tracked
-                self._match_selected_targets_to_ids(tracked)
 
                 if self._should_update_background():
                     self._update_background(frame)
@@ -263,6 +289,8 @@ class StreamRemoverApp:
                         output = cv2.inpaint(
                             replaced, edge, self.INPAINT_RADIUS, cv2.INPAINT_TELEA
                         )
+
+                output = self._overlay_tracked_masks(output, tracked)
             else:
                 if self.paused_snapshot is None and self.current_frame is not None:
                     self.paused_snapshot = self.current_frame.copy()
@@ -271,6 +299,7 @@ class StreamRemoverApp:
                     if self.paused_snapshot is not None
                     else np.zeros(self.fallback_frame_shape, dtype=np.uint8)
                 )
+                output = self._overlay_tracked_masks(output, self.last_tracked_instances)
 
             cv2.imshow(self.window_name, self._draw_hud(output))
             key = cv2.waitKey(1) & 0xFF
@@ -282,15 +311,8 @@ class StreamRemoverApp:
                     self._set_paused_snapshot_from_current()
                 else:
                     self.paused_snapshot = None
-            elif key in (ord("s"), ord("S")):
-                if not self.paused:
-                    self.paused = True
-                    self._set_paused_snapshot_from_current()
-                self._select_rois()
-                self._match_selected_targets_to_ids(self.last_tracked_instances)
             elif key in (ord("c"), ord("C")):
                 self.erasing_target_ids.clear()
-                self.pending_selected_boxes.clear()
             elif key in (ord("l"), ord("L")):
                 self.learning_enabled = not self.learning_enabled
 
