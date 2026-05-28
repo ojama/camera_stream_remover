@@ -111,6 +111,9 @@ class StreamRemoverApp:
     MIN_HUD_Y_POSITION = 24
     HUD_X_MARGIN = 12
     HUD_Y_OFFSET = 12
+    HUD_STATUS_Y_POSITION = 28
+    HUD_COUNT_Y_POSITION = 56
+    HUD_HELP_FONT_SCALE = 0.52
 
     def __init__(
         self,
@@ -159,7 +162,7 @@ class StreamRemoverApp:
         cv2.putText(
             out,
             f"Status: {status} | {mode}",
-            (self.HUD_X_MARGIN, 28),
+            (self.HUD_X_MARGIN, self.HUD_STATUS_Y_POSITION),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
             (20, 220, 20),
@@ -169,7 +172,7 @@ class StreamRemoverApp:
         cv2.putText(
             out,
             f"Erasing Targets Count: {len(self.erasing_target_ids)}",
-            (self.HUD_X_MARGIN, 56),
+            (self.HUD_X_MARGIN, self.HUD_COUNT_Y_POSITION),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
             (20, 220, 20),
@@ -184,7 +187,7 @@ class StreamRemoverApp:
                 max(self.MIN_HUD_Y_POSITION, out.shape[0] - self.HUD_Y_OFFSET),
             ),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.52,
+            self.HUD_HELP_FONT_SCALE,
             (230, 230, 230),
             1,
             cv2.LINE_AA,
