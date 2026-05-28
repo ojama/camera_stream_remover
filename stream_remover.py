@@ -305,7 +305,14 @@ def parse_args() -> argparse.Namespace:
         help="YOLO segmentation model path",
     )
     parser.add_argument("--conf", type=float, default=0.25, help="Detection confidence")
-    parser.add_argument("--iou", type=float, default=0.5, help="NMS IoU threshold")
+    parser.add_argument(
+        "--nms-iou",
+        "--iou",
+        dest="iou",
+        type=float,
+        default=0.5,
+        help="NMS IoU threshold",
+    )
     parser.add_argument(
         "--bg-alpha",
         type=float,
