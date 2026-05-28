@@ -149,6 +149,7 @@ class StreamRemoverApp:
         self.background_float: Optional[np.ndarray] = None
         self.pending_selected_boxes: List[Tuple[int, int, int, int]] = []
         self.erasing_target_ids: Set[int] = set()
+        self.last_tracked_instances: List[TrackedInstance] = []
 
     def _match_selected_targets_to_ids(
         self, tracked_instances: Iterable[TrackedInstance]
@@ -238,6 +239,7 @@ class StreamRemoverApp:
                     break
                 self.current_frame = frame
                 tracked = self.tracker.infer(frame)
+                self.last_tracked_instances = tracked
                 self._match_selected_targets_to_ids(tracked)
 
                 if self._should_update_background():
@@ -272,7 +274,7 @@ class StreamRemoverApp:
 
             cv2.imshow(self.window_name, self._draw_hud(output))
             key = cv2.waitKey(1) & 0xFF
-            if key in (ord("q"), 27):
+            if key in (ord("q"), ord("Q"), 27):
                 break
             if key == ord(" "):
                 self.paused = not self.paused
@@ -280,15 +282,16 @@ class StreamRemoverApp:
                     self._set_paused_snapshot_from_current()
                 else:
                     self.paused_snapshot = None
-            elif key == ord("s"):
+            elif key in (ord("s"), ord("S")):
                 if not self.paused:
                     self.paused = True
                     self._set_paused_snapshot_from_current()
                 self._select_rois()
-            elif key == ord("c"):
+                self._match_selected_targets_to_ids(self.last_tracked_instances)
+            elif key in (ord("c"), ord("C")):
                 self.erasing_target_ids.clear()
                 self.pending_selected_boxes.clear()
-            elif key == ord("l"):
+            elif key in (ord("l"), ord("L")):
                 self.learning_enabled = not self.learning_enabled
 
         self.cap.release()
