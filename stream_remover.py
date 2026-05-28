@@ -108,6 +108,8 @@ class YoloSegTracker:
 
 
 class StreamRemoverApp:
+    MIN_HUD_Y_POSITION = 24
+
     def __init__(
         self,
         camera_index: int,
@@ -175,7 +177,7 @@ class StreamRemoverApp:
         cv2.putText(
             out,
             "Space: Pause/Resume  S: Select  C: Clear  L: Learn Toggle  Q/Esc: Quit",
-            (12, max(24, out.shape[0] - 12)),
+            (12, max(self.MIN_HUD_Y_POSITION, out.shape[0] - 12)),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.52,
             (230, 230, 230),
@@ -183,6 +185,13 @@ class StreamRemoverApp:
             cv2.LINE_AA,
         )
         return out
+
+    def _should_update_background(self) -> bool:
+        return (
+            self.learning_enabled
+            and not self.erasing_target_ids
+            and not self.pending_selected_boxes
+        )
 
     def _select_rois(self) -> None:
         if self.paused_snapshot is None:
@@ -205,10 +214,7 @@ class StreamRemoverApp:
                 tracked = self.tracker.infer(frame)
                 self._match_selected_targets_to_ids(tracked)
 
-                should_learn = (
-                    self.learning_enabled and not self.erasing_target_ids and not self.pending_selected_boxes
-                )
-                if should_learn:
+                if self._should_update_background():
                     self._update_background(frame)
 
                 output = frame
