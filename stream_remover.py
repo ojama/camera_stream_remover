@@ -109,6 +109,8 @@ class YoloSegTracker:
 
 class StreamRemoverApp:
     MIN_HUD_Y_POSITION = 24
+    HUD_X_MARGIN = 12
+    HUD_Y_OFFSET = 12
 
     def __init__(
         self,
@@ -157,7 +159,7 @@ class StreamRemoverApp:
         cv2.putText(
             out,
             f"Status: {status} | {mode}",
-            (12, 28),
+            (self.HUD_X_MARGIN, 28),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
             (20, 220, 20),
@@ -167,7 +169,7 @@ class StreamRemoverApp:
         cv2.putText(
             out,
             f"Erasing Targets Count: {len(self.erasing_target_ids)}",
-            (12, 56),
+            (self.HUD_X_MARGIN, 56),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
             (20, 220, 20),
@@ -177,7 +179,10 @@ class StreamRemoverApp:
         cv2.putText(
             out,
             "Space: Pause/Resume  S: Select  C: Clear  L: Learn Toggle  Q/Esc: Quit",
-            (12, max(self.MIN_HUD_Y_POSITION, out.shape[0] - 12)),
+            (
+                self.HUD_X_MARGIN,
+                max(self.MIN_HUD_Y_POSITION, out.shape[0] - self.HUD_Y_OFFSET),
+            ),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.52,
             (230, 230, 230),
@@ -185,6 +190,11 @@ class StreamRemoverApp:
             cv2.LINE_AA,
         )
         return out
+
+    def _set_paused_snapshot_from_current(self) -> None:
+        self.paused_snapshot = (
+            self.current_frame.copy() if self.current_frame is not None else None
+        )
 
     def _should_update_background(self) -> bool:
         return (
@@ -247,13 +257,13 @@ class StreamRemoverApp:
             if key == ord(" "):
                 self.paused = not self.paused
                 if self.paused:
-                    self.paused_snapshot = self.current_frame.copy() if self.current_frame is not None else None
+                    self._set_paused_snapshot_from_current()
                 else:
                     self.paused_snapshot = None
             elif key == ord("s"):
                 if not self.paused:
                     self.paused = True
-                    self.paused_snapshot = self.current_frame.copy() if self.current_frame is not None else None
+                    self._set_paused_snapshot_from_current()
                 self._select_rois()
             elif key == ord("c"):
                 self.erasing_target_ids.clear()
