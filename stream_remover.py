@@ -119,6 +119,9 @@ class StreamRemoverApp:
         self.tracker = tracker
         self.alpha = alpha
         self.window_name = window_name
+        w = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or 640
+        h = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 480
+        self.fallback_frame_shape = (h, w, 3)
         self.paused = False
         self.learning_enabled = True
         self.current_frame: Optional[np.ndarray] = None
@@ -225,7 +228,11 @@ class StreamRemoverApp:
             else:
                 if self.paused_snapshot is None and self.current_frame is not None:
                     self.paused_snapshot = self.current_frame.copy()
-                output = self.paused_snapshot if self.paused_snapshot is not None else np.zeros((480, 640, 3), dtype=np.uint8)
+                output = (
+                    self.paused_snapshot
+                    if self.paused_snapshot is not None
+                    else np.zeros(self.fallback_frame_shape, dtype=np.uint8)
+                )
 
             cv2.imshow(self.window_name, self._draw_hud(output))
             key = cv2.waitKey(1) & 0xFF

@@ -12,7 +12,7 @@
 ## 快速启动
 
 ```bash
-python /tmp/workspace/ojama/camera_stream_remover/stream_remover.py --camera 0
+python stream_remover.py --camera 0
 ```
 
 如果有 ONNX/TensorRT 推理封装，可替换 `YoloSegTracker.infer()` 实现，保持输出为 `(track_id, bbox, mask)` 即可接入现有流程。
