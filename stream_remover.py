@@ -7,6 +7,11 @@ from typing import Iterable, List, Optional, Sequence, Set, Tuple
 import cv2
 import numpy as np
 
+try:
+    from ultralytics import YOLO  # type: ignore
+except ImportError:  # pragma: no cover - depends on optional runtime dependency
+    YOLO = None
+
 
 @dataclass(frozen=True)
 class TrackedInstance:
@@ -59,7 +64,11 @@ def apply_background_replacement(
 
 class YoloSegTracker:
     def __init__(self, model_path: str, conf: float = 0.25, iou: float = 0.5) -> None:
-        from ultralytics import YOLO  # type: ignore
+        if YOLO is None:
+            raise ImportError(
+                "ultralytics is required for YoloSegTracker. "
+                "Install it with `pip install ultralytics` or replace YoloSegTracker."
+            )
 
         self.model = YOLO(model_path)
         self.conf = conf
@@ -114,6 +123,10 @@ class StreamRemoverApp:
     HUD_STATUS_Y_POSITION = 28
     HUD_COUNT_Y_POSITION = 56
     HUD_HELP_FONT_SCALE = 0.52
+    DEFAULT_FRAME_WIDTH = 640
+    DEFAULT_FRAME_HEIGHT = 480
+    MORPHOLOGY_KERNEL_SIZE = (3, 3)
+    INPAINT_RADIUS = 3
 
     def __init__(
         self,
@@ -126,8 +139,8 @@ class StreamRemoverApp:
         self.tracker = tracker
         self.alpha = alpha
         self.window_name = window_name
-        w = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or 640
-        h = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 480
+        w = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or self.DEFAULT_FRAME_WIDTH
+        h = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or self.DEFAULT_FRAME_HEIGHT
         self.fallback_frame_shape = (h, w, 3)
         self.paused = False
         self.learning_enabled = True
@@ -241,9 +254,13 @@ class StreamRemoverApp:
                             frame, background, target_masks
                         )
                         edge = cv2.morphologyEx(
-                            repair, cv2.MORPH_GRADIENT, np.ones((3, 3), np.uint8)
+                            repair,
+                            cv2.MORPH_GRADIENT,
+                            np.ones(self.MORPHOLOGY_KERNEL_SIZE, np.uint8),
                         )
-                        output = cv2.inpaint(replaced, edge, 3, cv2.INPAINT_TELEA)
+                        output = cv2.inpaint(
+                            replaced, edge, self.INPAINT_RADIUS, cv2.INPAINT_TELEA
+                        )
             else:
                 if self.paused_snapshot is None and self.current_frame is not None:
                     self.paused_snapshot = self.current_frame.copy()
