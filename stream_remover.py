@@ -174,7 +174,7 @@ class StreamRemoverApp:
         )
         cv2.putText(
             out,
-            "Space:Pause/Resume  S:Select  C:Clear  L:Learn Toggle  Q/Esc:Quit",
+            "Space:Pause/Resume  S:Select  C:Clear  L: Learn Toggle  Q/Esc:Quit",
             (12, max(24, out.shape[0] - 12)),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.52,
