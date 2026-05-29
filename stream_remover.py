@@ -150,11 +150,15 @@ class StreamRemoverApp:
         tracker: YoloSegTracker,
         alpha: float = 0.02,
         window_name: str = "Camera Stream Remover",
+        erasure_expand_pixels: int = 0,
+        selected_target_alpha: float = 0.45,
     ) -> None:
         self.cap = cv2.VideoCapture(camera_index)
         self.tracker = tracker
         self.alpha = alpha
         self.window_name = window_name
+        self.erasure_expand_pixels = max(0, erasure_expand_pixels)
+        self.selected_target_alpha = max(0.0, selected_target_alpha)
         w = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or self.DEFAULT_FRAME_WIDTH
         h = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or self.DEFAULT_FRAME_HEIGHT
         self.fallback_frame_shape = (h, w, 3)
@@ -181,21 +185,28 @@ class StreamRemoverApp:
         """Overlay semi-transparent green masks on detected instances.
 
         All detected instances get a dim green hint so the user knows they are
-        clickable.  Instances already selected for erasure get a brighter green
-        to confirm they are being erased.
+        clickable. Instances selected for erasure can use a custom alpha, or
+        hide the overlay entirely when alpha is 0.
         """
         out = frame.copy()
         green = np.array([0, 255, 0], dtype=np.float32)
         for inst in tracked:
-            alpha = (
-                self.MASK_OVERLAY_ALPHA_ERASING
-                if inst.track_id in self.erasing_target_ids
-                else self.MASK_OVERLAY_ALPHA_DETECTED
-            )
+            if inst.track_id in self.erasing_target_ids:
+                alpha = self.selected_target_alpha
+                if alpha <= 0.0:
+                    continue
+            else:
+                alpha = self.MASK_OVERLAY_ALPHA_DETECTED
+                
             m = inst.mask.astype(bool)
-            out[m] = np.clip(
-                out[m].astype(np.float32) * (1.0 - alpha) + green * alpha, 0, 255
-            ).astype(np.uint8)
+            if alpha >= 0.1:
+                out[m] = np.clip(
+                    out[m].astype(np.float32) * (1.0 - alpha) + green * alpha, 0, 255
+                ).astype(np.uint8)
+            else:
+                out[m] = np.clip(
+                    out[m].astype(np.float32), 0, 255
+                ).astype(np.uint8)    
         return out
 
     def _on_mouse(self, event: int, x: int, y: int, _flags: int, _param: object) -> None:
@@ -209,6 +220,14 @@ class StreamRemoverApp:
                 else:
                     self.erasing_target_ids.add(inst.track_id)
                 return
+
+    def _expand_mask(self, mask: np.ndarray) -> np.ndarray:
+        if self.erasure_expand_pixels <= 0:
+            return mask
+        kernel_size = 2 * self.erasure_expand_pixels + 1
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
+        expanded = cv2.dilate(mask.astype(np.uint8), kernel, iterations=1)
+        return expanded.astype(bool)
 
     def _draw_hud(self, frame: np.ndarray) -> np.ndarray:
         out = frame.copy()
@@ -275,7 +294,9 @@ class StreamRemoverApp:
                 if self.background_float is not None and self.erasing_target_ids:
                     background = np.clip(self.background_float, 0, 255).astype(np.uint8)
                     target_masks = [
-                        obj.mask for obj in tracked if obj.track_id in self.erasing_target_ids
+                        self._expand_mask(obj.mask)
+                        for obj in tracked
+                        if obj.track_id in self.erasing_target_ids
                     ]
                     if target_masks:
                         replaced, repair = apply_background_replacement(
@@ -344,13 +365,31 @@ def parse_args() -> argparse.Namespace:
         default=0.02,
         help="Background running average alpha",
     )
+    parser.add_argument(
+        "--erasure-expand",
+        type=int,
+        default=0,
+        help="Expand the erased mask by this many pixels",
+    )
+    parser.add_argument(
+        "--selected-alpha",
+        type=float,
+        default=0.45,
+        help="Alpha value for selected target overlay (0 disables it)",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
     tracker = YoloSegTracker(model_path=args.model, conf=args.conf, iou=args.iou)
-    app = StreamRemoverApp(camera_index=args.camera, tracker=tracker, alpha=args.bg_alpha)
+    app = StreamRemoverApp(
+        camera_index=args.camera,
+        tracker=tracker,
+        alpha=args.bg_alpha,
+        erasure_expand_pixels=args.erasure_expand,
+        selected_target_alpha=args.selected_alpha,
+    )
     app.run()
 
 
