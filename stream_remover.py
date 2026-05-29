@@ -347,8 +347,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model",
         type=str,
-        default="yolov8n-seg.pt",
-        help="YOLO segmentation model path",
+        default="yolo11n-seg.pt",
+        help="YOLO v11 segmentation + tracking model path",
     )
     parser.add_argument("--conf", type=float, default=0.25, help="Detection confidence")
     parser.add_argument(
